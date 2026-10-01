@@ -1,0 +1,3 @@
+# Only packages listed here may run install scripts (supply-chain hardening).
+allowBuilds:
+  esbuild: true

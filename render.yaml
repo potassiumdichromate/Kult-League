@@ -1,0 +1,86 @@
+# Render Blueprint for the Pixel Agency backend (services build from backend/).
+#
+# NOTE: syncing this Blueprint CREATES BILLABLE RESOURCES (a web service, a
+# background worker and a Postgres database). Review plans before applying.
+# To share an existing database instead, delete `databases:` and point
+# DATABASE_URL at it (all tables are confined to the `pixel_agency` schema).
+
+envVarGroups:
+  - name: pixel-agency-shared
+    envVars:
+      - key: SESSION_SECRET
+        sync: false
+      - key: AI_ARENA_API_URL
+        sync: false                     # AI Arena gateway origin, https
+      - key: AI_INFRA_URL
+        value: http://ai-infrastructure:10000   # private network
+      - key: AI_INFRA_KEY_ID
+        value: pixel-agency
+      - key: AI_INFRA_SECRET
+        sync: false
+      - key: LOCK_MINUTES_BEFORE_KICKOFF
+        value: "5"
+      - key: MAX_ANALYSES_PER_FIXTURE
+        value: "3"
+
+services:
+  # Public web service: the game in the browser calls it directly.
+  - type: web
+    name: pixel-agency-api
+    runtime: node
+    rootDir: backend
+    region: oregon                      # same region as ai-infrastructure (private network)
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    preDeployCommand: node dist/storage/migrate.js
+    startCommand: node dist/main.js
+    healthCheckPath: /ready
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: pixel-agency-shared
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pixel-agency-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: disable                  # internal URL only
+      - key: CORS_ORIGINS
+        sync: false                     # the game's https origin(s)
+      - key: LOG_LEVEL
+        value: info
+
+  # Auto-lock, settlement, payroll.
+  - type: worker
+    name: pixel-agency-worker
+    runtime: node
+    rootDir: backend
+    region: oregon
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node dist/worker.js
+    autoDeployTrigger: commit
+    envVars:
+      - fromGroup: pixel-agency-shared
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22.12.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pixel-agency-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: disable
+      - key: LOG_LEVEL
+        value: info
+
+databases:
+  - name: pixel-agency-db
+    region: oregon
+    plan: basic-256mb
+    databaseName: pixel_agency
+    ipAllowList: []                     # internal connections only
