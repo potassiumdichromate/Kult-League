@@ -5,7 +5,7 @@
   "description": "Pixel Agency game backend: AI football analysis agencies, predictions, scoring and leaderboards",
   "main": "dist/main.js",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.13.0"
   },
   "packageManager": "pnpm@11.0.9",
   "scripts": {

@@ -41,7 +41,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: "22.12.0"
+        value: "22.20.0"
       - key: DATABASE_URL
         fromDatabase:
           name: pixel-agency-db
@@ -68,7 +68,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: "22.12.0"
+        value: "22.20.0"
       - key: DATABASE_URL
         fromDatabase:
           name: pixel-agency-db
