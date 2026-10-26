@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import pino from 'pino';
-import { buildGame } from './bootstrap';
+import { buildServices } from './bootstrap';
 import { ConfigError, loadConfig } from './config/env';
+import type { DirectorService } from './game/director';
 import type { GameService } from './game/service';
 import { createPool } from './storage/postgres';
 import { loggerOptions } from './telemetry/logger';
@@ -11,13 +12,15 @@ import { loggerOptions } from './telemetry/logger';
  *   1. lock drafts whose lock time has passed (picks stand as drafted)
  *   2. settle locked predictions once results are in; pay winnings, award analyst XP
  *   3. run weekly payroll (once per agency per ISO week)
+ *   4. put Mind decisions on the record that missed it while it was briefly unreachable
  * Every job is idempotent, so overlapping or repeated runs are safe.
  */
-export async function runOnce(game: GameService, log: pino.Logger): Promise<void> {
+export async function runOnce(game: GameService, director: DirectorService, log: pino.Logger): Promise<void> {
   const jobs: Array<[string, () => Promise<unknown>]> = [
     ['auto-lock', () => game.autoLock()],
     ['settle', () => game.settleDue()],
     ['payroll', () => game.runPayroll()],
+    ['mind-records', () => director.syncRecords()],
   ];
   for (const [name, job] of jobs) {
     try {
@@ -38,12 +41,12 @@ async function main(): Promise<void> {
   }
   const log = pino(loggerOptions(config.logLevel));
   const pool = createPool({ connectionString: config.databaseUrl, max: 3, ssl: config.databaseSsl });
-  const game = buildGame(pool, config, log);
+  const { game, director } = buildServices(pool, config, log);
 
   let stopping = false;
   let timer: NodeJS.Timeout | undefined;
   const loop = async () => {
-    await runOnce(game, log);
+    await runOnce(game, director, log);
     if (!stopping) timer = setTimeout(() => void loop(), config.workerIntervalSeconds * 1000);
   };
   const stop = async () => {

@@ -20,6 +20,8 @@ envVarGroups:
         sync: false
       - key: LOCK_MINUTES_BEFORE_KICKOFF
         value: "5"
+      - key: MINDS_API_URL
+        value: https://api.build.hellominds.ai
       - key: MAX_ANALYSES_PER_FIXTURE
         value: "3"
 

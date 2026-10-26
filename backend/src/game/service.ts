@@ -220,7 +220,7 @@ export class GameService {
     return NOT_STARTED.has(ctx.fixture.status) && this.now() < this.lockAt(new Date(ctx.fixture.kickoffAt));
   }
 
-  private predictionView(p: PredictionRow) {
+  predictionView(p: PredictionRow) {
     return {
       id: p.id,
       fixtureId: p.fixtureId,
@@ -239,6 +239,11 @@ export class GameService {
       exactHits: p.exactHits,
       breakdown: p.breakdown
         ? Object.fromEntries(Object.entries(p.breakdown).map(([m, b]) => [m, { result: b.result, points: b.pointsX10 / 10 }]))
+        : null,
+      decidedBy: p.decidedBy,
+      // A Mind's call, as it stands on the ai-infrastructure record.
+      mindDecision: p.record
+        ? { mindId: p.mindId, conviction: p.record.conviction, rationale: p.record.rationale, evidence: p.record.evidence, record: { status: p.record.status, agentId: p.record.agentId, decisionId: p.record.decisionId ?? null, error: p.record.error ?? null } }
         : null,
     };
   }

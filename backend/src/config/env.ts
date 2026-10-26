@@ -30,6 +30,10 @@ const envSchema = z.object({
   AI_INFRA_URL: z.string().url(),
   AI_INFRA_KEY_ID: z.string().min(1),
   AI_INFRA_SECRET: z.string().min(43, 'AI_INFRA_SECRET must decode to at least 32 bytes'),
+  /** Hello Minds Builder API, used to prove a Minds Connect sign-in when an owner links their Mind. */
+  MINDS_API_URL: z.string().url().default('https://api.build.hellominds.ai'),
+  /** This API's public origin, written into the director OpenAPI spec a Mind builds its Skill from. */
+  PUBLIC_API_URL: z.string().url().default('https://pixel-agency-api.onrender.com'),
 
   /** Origins allowed to call the API from a browser (the game's host), comma separated. */
   CORS_ORIGINS: z.string().default(''),
@@ -57,6 +61,8 @@ export interface AppConfig {
   sessionTtlMinutes: number;
   aiArenaApiUrl: string;
   aiInfra: { url: string; keyId: string; secret: string };
+  mindsApiUrl: string;
+  publicApiUrl: string;
   corsOrigins: string[];
   lockMinutesBeforeKickoff: number;
   maxAnalysesPerFixture: number;
@@ -90,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if (e.NODE_ENV === 'production') {
     if (!e.AI_ARENA_API_URL.startsWith('https://')) problems.push('AI_ARENA_API_URL must use https in production');
+    if (!e.MINDS_API_URL.startsWith('https://')) problems.push('MINDS_API_URL must use https in production');
     if (corsOrigins.some((o) => o.startsWith('http://'))) problems.push('CORS_ORIGINS must use https in production');
   }
   if (problems.length > 0) throw new ConfigError(problems);
@@ -106,6 +113,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionTtlMinutes: e.SESSION_TTL_MINUTES,
     aiArenaApiUrl: e.AI_ARENA_API_URL.replace(/\/$/, ''),
     aiInfra: { url: e.AI_INFRA_URL.replace(/\/$/, ''), keyId: e.AI_INFRA_KEY_ID, secret: e.AI_INFRA_SECRET },
+    mindsApiUrl: e.MINDS_API_URL.replace(/\/$/, ''),
+    publicApiUrl: e.PUBLIC_API_URL.replace(/\/$/, ''),
     corsOrigins,
     lockMinutesBeforeKickoff: e.LOCK_MINUTES_BEFORE_KICKOFF,
     maxAnalysesPerFixture: e.MAX_ANALYSES_PER_FIXTURE,

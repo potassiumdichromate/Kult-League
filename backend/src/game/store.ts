@@ -62,6 +62,20 @@ export interface PredictionRow {
   pointsX10: number;
   exactHits: number;
   breakdown: Settlement['breakdown'] | null;
+  decidedBy: 'ceo' | 'mind';
+  mindId: string | null;
+  record: MindRecord | null;
+}
+
+/** A Mind's decision as it stands on the ai-infrastructure record (docs/ARCHITECTURE.md, "Mind directors"). */
+export interface MindRecord {
+  status: 'pending' | 'recorded' | 'rejected' | 'missed';
+  agentId: string;
+  conviction: 'LOW' | 'MEDIUM' | 'HIGH';
+  rationale: string;
+  evidence: string[];
+  decisionId?: string;
+  error?: string;
 }
 
 export interface AnalysisRow {
@@ -92,7 +106,8 @@ const analystCols = `id, agency_id AS "agencyId", candidate_key AS "candidateKey
   weekly_salary AS "weeklySalary", style, hired_at AS "hiredAt", fired_at AS "firedAt", fire_reason AS "fireReason"`;
 const predictionCols = `id, agency_id AS "agencyId", fixture_id::float8 AS "fixtureId", league_name AS "leagueName", home_team AS "homeTeam",
   away_team AS "awayTeam", kickoff_at AS "kickoffAt", lock_at AS "lockAt", week, status, picks, analysis_id AS "analysisId", edited,
-  locked_at AS "lockedAt", auto_locked AS "autoLocked", settled_at AS "settledAt", points_x10 AS "pointsX10", exact_hits AS "exactHits", breakdown`;
+  locked_at AS "lockedAt", auto_locked AS "autoLocked", settled_at AS "settledAt", points_x10 AS "pointsX10", exact_hits AS "exactHits", breakdown,
+  decided_by AS "decidedBy", mind_id AS "mindId", record`;
 
 export class GameStore {
   constructor(private readonly pool: Pool) {}
@@ -314,6 +329,48 @@ export class GameStore {
       [id, auto],
     );
     return rows[0];
+  }
+
+  /**
+   * A Mind's final call: creates the prediction, or takes over an open draft
+   * (keeping its analysis, so the analysts who worked on it still earn XP),
+   * and locks it in the same statement. Never touches a locked prediction.
+   */
+  async decideAndLock(
+    c: PoolClient,
+    p: { agencyId: string; fixtureId: number; leagueName: string; homeTeam: string; awayTeam: string; kickoffAt: Date; lockAt: Date; week: string; picks: Picks; mindId: string; record: MindRecord },
+  ): Promise<PredictionRow | undefined> {
+    const { rows } = await c.query<PredictionRow>(
+      `INSERT INTO pixel_agency.predictions (agency_id, fixture_id, league_name, home_team, away_team, kickoff_at, lock_at, week, picks,
+         status, locked_at, edited, decided_by, mind_id, record)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'LOCKED', now(), true, 'mind', $10, $11)
+       ON CONFLICT (agency_id, fixture_id) DO UPDATE SET picks = EXCLUDED.picks, status = 'LOCKED', locked_at = now(), auto_locked = false,
+         edited = true, decided_by = 'mind', mind_id = EXCLUDED.mind_id, record = EXCLUDED.record,
+         kickoff_at = EXCLUDED.kickoff_at, lock_at = EXCLUDED.lock_at, week = EXCLUDED.week, updated_at = now()
+       WHERE pixel_agency.predictions.status = 'DRAFT'
+       RETURNING ${predictionCols}`,
+      [p.agencyId, p.fixtureId, p.leagueName, p.homeTeam, p.awayTeam, p.kickoffAt, p.lockAt, p.week, JSON.stringify(p.picks), p.mindId, JSON.stringify(p.record)],
+    );
+    return rows[0];
+  }
+
+  /** Updates only the record status of a Mind's locked prediction (picks are untouched). */
+  async setRecord(id: string, record: MindRecord): Promise<PredictionRow | undefined> {
+    const { rows } = await this.pool.query<PredictionRow>(
+      `UPDATE pixel_agency.predictions SET record = $2, updated_at = now() WHERE id = $1 AND decided_by = 'mind' AND status = 'LOCKED' RETURNING ${predictionCols}`,
+      [id, JSON.stringify(record)],
+    );
+    return rows[0];
+  }
+
+  /** Mind decisions not yet on the record. */
+  async pendingRecords(limit: number): Promise<PredictionRow[]> {
+    const { rows } = await this.pool.query<PredictionRow>(
+      `SELECT ${predictionCols} FROM pixel_agency.predictions
+       WHERE decided_by = 'mind' AND status = 'LOCKED' AND record ->> 'status' = 'pending' ORDER BY kickoff_at LIMIT $1`,
+      [limit],
+    );
+    return rows;
   }
 
   /** Drafts whose lock time has passed are locked as they stand. */

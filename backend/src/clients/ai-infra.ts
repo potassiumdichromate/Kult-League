@@ -64,6 +64,45 @@ export interface ResearchBrief {
   createdAt: string;
 }
 
+/** A Mind's picks in ai-infrastructure's markets (fixed over/under lines for cards and corners). */
+export interface RecordSubmission {
+  agent: { id: string; name: string };
+  picks: {
+    result: 'HOME' | 'DRAW' | 'AWAY';
+    score: { home: number; away: number };
+    totalCards: 'OVER' | 'UNDER';
+    totalCorners: 'OVER' | 'UNDER';
+    scorerId: string | null;
+  };
+  conviction: 'LOW' | 'MEDIUM' | 'HIGH';
+  rationale: string;
+  evidence: string[];
+}
+
+export interface RecordEntry {
+  prediction: { agentId: string; decisionId: string; picks: Record<string, unknown> };
+  alreadySubmitted: boolean;
+}
+
+/** Retrieval-based career profile from ai-infrastructure (GET /v1/agents/:id/profile). */
+export interface RecordProfile {
+  agentId: string;
+  record: Array<{ market: string; n: number; hitRate: number | null; ciLow: number | null; ciHigh: number | null }>;
+  calibration: Array<{ conviction: string; n: number; hitRate: number | null }>;
+  baseline: Array<{ market: string; n: number; hitRate: number; baselineHitRate: number; difference: number | null; ciLow: number | null; ciHigh: number | null }>;
+  lessons: Array<{ id: string; summary: string; createdAt: string }>;
+  recentOutcomes: Array<{ id: string; summary: string; createdAt: string }>;
+}
+
+/**
+ * The verifiable record: submitted picks are write-once, anchored on 0G Chain
+ * before kickoff and graded by ai-infrastructure (scope football:submit).
+ */
+export interface MatchRecord {
+  submit(fixtureId: number, s: RecordSubmission): Promise<RecordEntry>;
+  profile(agentId: string): Promise<RecordProfile>;
+}
+
 export interface FootballIntel {
   listFixtures(q: { from?: string; to?: string; league?: number }): Promise<FixtureSummary[]>;
   context(fixtureId: number): Promise<FixtureContext>;
@@ -71,7 +110,7 @@ export interface FootballIntel {
   research(fixtureId: number, specialty: Specialty): Promise<ResearchBrief>;
 }
 
-export class AiInfraClient implements FootballIntel {
+export class AiInfraClient implements FootballIntel, MatchRecord {
   private readonly secret: Buffer;
 
   constructor(
@@ -82,21 +121,24 @@ export class AiInfraClient implements FootballIntel {
     if (this.secret.length < 32) throw new Error('AI_INFRA_SECRET must decode to at least 32 bytes');
   }
 
-  private async request<T>(method: 'GET' | 'POST', pathWithQuery: string): Promise<T> {
+  private async request<T>(method: 'GET' | 'POST', pathWithQuery: string, body?: unknown): Promise<T> {
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = randomBytes(18).toString('base64url');
-    const canonical = ['v1', method, pathWithQuery, timestamp, nonce, createHash('sha256').update('').digest('hex')].join('\n');
-    const headers = {
+    // The signature covers the exact bytes sent.
+    const payload = body === undefined ? '' : JSON.stringify(body);
+    const canonical = ['v1', method, pathWithQuery, timestamp, nonce, createHash('sha256').update(payload).digest('hex')].join('\n');
+    const headers: Record<string, string> = {
       'x-aii-key-id': this.opts.keyId,
       'x-aii-timestamp': timestamp,
       'x-aii-nonce': nonce,
       'x-aii-signature': createHmac('sha256', this.secret).update(canonical).digest('hex'),
+      ...(body !== undefined && { 'content-type': 'application/json' }),
     };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.opts.timeoutMs ?? 60_000);
     let res: Response;
     try {
-      res = await this.fetchImpl(`${this.opts.url}${pathWithQuery}`, { method, headers, signal: controller.signal });
+      res = await this.fetchImpl(`${this.opts.url}${pathWithQuery}`, { method, headers, signal: controller.signal, ...(body !== undefined && { body: payload }) });
     } catch {
       throw upstreamUnavailable('match intelligence is unreachable');
     } finally {
@@ -130,6 +172,14 @@ export class AiInfraClient implements FootballIntel {
 
   forecastNow(fixtureId: number) {
     return this.request<FixtureContext>('POST', `/v1/football/fixtures/${fixtureId}/forecast`);
+  }
+
+  submit(fixtureId: number, s: RecordSubmission) {
+    return this.request<RecordEntry>('POST', `/v1/football/fixtures/${fixtureId}/submissions`, s);
+  }
+
+  profile(agentId: string) {
+    return this.request<RecordProfile>('GET', `/v1/agents/${encodeURIComponent(agentId)}/profile`);
   }
 
   research(fixtureId: number, specialty: Specialty) {

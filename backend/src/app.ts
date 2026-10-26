@@ -5,12 +5,16 @@ import rateLimit from '@fastify/rate-limit';
 import type { AppConfig } from './config/env';
 import { errorHandler } from './api/errors';
 import { registerRoutes } from './api/routes';
+import { registerDirectorRoutes } from './api/director-routes';
+import { hashDirectorKey, looksLikeDirectorKey, type DirectorService } from './game/director';
 import type { GameService } from './game/service';
 import { CORRELATION_HEADER, genCorrelationId, loggerOptions } from './telemetry/logger';
 
 export interface AppDeps {
   config: Pick<AppConfig, 'logLevel' | 'bodyLimitBytes' | 'requestTimeoutMs' | 'rateLimitPerMinute' | 'corsOrigins' | 'sessionSecret'>;
   game: GameService;
+  /** Mind directors (docs/ARCHITECTURE.md). Omitted, the /v1/agency/mind and /v1/director routes are not served. */
+  director?: { service: DirectorService; publicApiUrl: string };
   /** Readiness probe (database). */
   ready?: () => Promise<void>;
   /** Clock override for tests. */
@@ -58,6 +62,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     max: config.rateLimitPerMinute,
     timeWindow: '1 minute',
     allowList: (req) => req.url === '/health',
+    // A Mind's Skill calls from Hello Minds' shared servers: one bucket per director key, not per IP.
+    keyGenerator: (req) => {
+      const key = req.headers['x-director-key'];
+      return looksLikeDirectorKey(key) ? `dk:${hashDirectorKey(key)}` : req.ip;
+    },
   });
 
   app.get('/health', async () => ({ status: 'ok' }));
@@ -72,5 +81,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   registerRoutes(app, deps.game, config.sessionSecret, deps.now);
+  if (deps.director) registerDirectorRoutes(app, deps.director.service, { sessionSecret: config.sessionSecret, publicApiUrl: deps.director.publicApiUrl }, deps.now);
   return app;
 }

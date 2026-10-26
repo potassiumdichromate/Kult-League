@@ -31,6 +31,12 @@ export const SPECIALTY_TITLES: Record<Specialty, string> = {
   scorers: 'Striker Scout',
 };
 
+/**
+ * ai-infrastructure grades cards and corners as over/under on fixed lines,
+ * so a Mind's exact totals go on the record as the side of these lines.
+ */
+export const RECORD_LINES = { totalCards: 4.5, totalCorners: 9.5 } as const;
+
 export const STARTING_CREDITS = 1500;
 /** Credits earned per point (points ×10 → credits ×1). */
 export const CREDITS_PER_POINT_X10 = 1;

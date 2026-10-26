@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import pino from 'pino';
 import { buildApp } from './app';
-import { buildGame } from './bootstrap';
+import { buildServices } from './bootstrap';
 import { ConfigError, loadConfig } from './config/env';
 import { createPool } from './storage/postgres';
 import { loggerOptions } from './telemetry/logger';
@@ -17,7 +17,8 @@ async function main(): Promise<void> {
   }
   const log = pino(loggerOptions(config.logLevel));
   const pool = createPool({ connectionString: config.databaseUrl, max: config.databasePoolMax, ssl: config.databaseSsl });
-  const app = await buildApp({ config, game: buildGame(pool, config, log), ready: async () => void (await pool.query('SELECT 1')) });
+  const { game, director } = buildServices(pool, config, log);
+  const app = await buildApp({ config, game, director: { service: director, publicApiUrl: config.publicApiUrl }, ready: async () => void (await pool.query('SELECT 1')) });
   if (config.corsOrigins.length === 0) app.log.warn('CORS_ORIGINS is empty — browsers cannot call this API');
 
   let shuttingDown = false;

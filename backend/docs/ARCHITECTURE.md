@@ -19,6 +19,7 @@ This service is the game's backend. It owns players, agencies, staff, credits, a
 11. [API reference](#api-reference)
 12. [Configuration and deployment](#configuration-and-deployment)
 13. [Testing](#testing)
+14. [Mind directors](#mind-directors)
 
 ---
 
@@ -196,6 +197,22 @@ All `/v1` routes except sign-in and leaderboards need `Authorization: Bearer <se
 | GET | `/v1/leaderboards/:kind` | `weekly` (`?week=`) or `all-time`; `?limit&offset` |
 | GET | `/health`, `/ready` | Liveness, and readiness (database) |
 
+**Mind directors** ([Mind directors](#mind-directors)). Owner routes need the game session; director routes need `X-Director-Key`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/agency/mind` | `{accessToken, mindId?}`: link a Minds account, choose the Mind → `{mind, minds, key}` (key once) |
+| GET | `/v1/agency/mind` | The linked Mind and director keys (prefixes only) |
+| DELETE | `/v1/agency/mind` | Unlink; revokes every key |
+| POST | `/v1/agency/mind/keys` | New director key (shown once) |
+| DELETE | `/v1/agency/mind/keys/:keyId` | Revoke a key |
+| GET | `/v1/director/openapi.json` | Public: the spec the Mind builds its Skill from |
+| GET | `/v1/director/record` | The Mind's career record and the agency's standing |
+| GET | `/v1/director/agency`, `/talent`, `/fixtures`, `/fixtures/:id`, `/predictions` | As the owner's routes |
+| POST, DELETE | `/v1/director/staff`, `/v1/director/staff/:analystId` | Hire, fire |
+| POST | `/v1/director/fixtures/:id/analysis` | Run the desk analysis |
+| POST | `/v1/director/fixtures/:id/decision` | `{picks, conviction, rationale, evidence}`: the final call, locked and put on the record |
+
 Errors are returned as `{error, message?, correlationId}`. The status codes are:
 
 - 400 invalid input
@@ -206,6 +223,34 @@ Errors are returned as `{error, message?, correlationId}`. The status codes are:
 - 409 closed, locked or conflicting
 - 429 limit reached
 - 503 upstream unavailable
+
+## Mind directors
+
+A player can hand the final call to their **Hello Minds** agent (a "Mind", by Animoca Brands). The Mind directs the agency through its own API: it reads the analysts' reports, hires and fires, does its own research, and decides each match. Every decision it makes also goes on a career record in ai-infrastructure, anchored on 0G Chain before kickoff, graded after the match, and compared with the 0G baseline on the same matches. The record follows the Mind across agencies and seasons.
+
+**Linking (owner, game session).**
+1. The game signs the owner in with Minds Connect (OAuth + PKCE, scopes `email minds:list`).
+2. `POST /v1/agency/mind {accessToken, mindId?}` proves the token by listing the owner's Minds on Hello Minds (`GET /v1/users/{sub}/minds`). It links the Minds account to the agency, picks the directing Mind (the one named, or the account's only Mind) and, when the agency has none, issues a **director key**. The key is shown once; only its SHA-256 is stored. At most 3 are active.
+3. One Minds account directs one agency. Unlinking revokes every key.
+
+**Directing (the Mind's Skill, `X-Director-Key`).** The owner gives their Mind `GET /v1/director/openapi.json`; following Minds' Skill guide, the Mind builds a Skill from it. The spec's description is written for the Mind: a daily routine, the scoring, and how the record works.
+
+**A Mind's decision** (`POST /v1/director/fixtures/:id/decision`) is final the moment it is made:
+
+| Step | Rule |
+|---|---|
+| Open | The match hasn't started, it is before the game's lock time, **and** the record is still open (ai-infrastructure locks 30 minutes before kickoff by default). Otherwise `409` and nothing changes. |
+| Valid | Outcome agrees with the score; the scorer is in a squad and plays for a side the score says will score. Every problem is listed in one `400`. |
+| Lock | The prediction is created or the open draft taken over (its analysis kept, so the analysts still earn XP) and locked in one statement, `decided_by = 'mind'`. |
+| Record | Submitted to ai-infrastructure as `mind:<mindId>` (`POST /v1/football/fixtures/:id/submissions`, scope `football:submit`). Exact cards and corners go on the record as over/under 4.5 and 9.5. The record status becomes `recorded`, or `rejected` / `missed` with the reason. If the record is briefly unreachable the status stays `pending` and the worker submits it on its next run. The record is write-once, so a retry can never change it. |
+
+**What the Mind sees.** Its analysts' reports, squads, absences and its own research. It does not get the raw 0G forecast: that is what the analysts read, and handing it over would make hiring pointless. The forecast is used only after the fact, as the baseline on the record.
+
+A match the Mind doesn't decide plays out as before: the desk's draft locks as it stands, as a CEO pick, and doesn't count on the Mind's record.
+
+`GET /v1/director/record` returns the career from ai-infrastructure (per market with confidence intervals, conviction calibration, paired comparison with the 0G baseline, lessons) with this agency's standing.
+
+---
 
 ## Configuration and deployment
 
