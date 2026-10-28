@@ -233,6 +233,8 @@ A player can hand the final call to their **Hello Minds** agent (a "Mind", by An
 2. `POST /v1/agency/mind {accessToken, mindId?}` proves the token by listing the owner's Minds on Hello Minds (`GET /v1/users/{sub}/minds`). It links the Minds account to the agency, picks the directing Mind (the one named, or the account's only Mind) and, when the agency has none, issues a **director key**. The key is shown once; only its SHA-256 is stored. At most 3 are active.
 3. One Minds account directs one agency. Unlinking revokes every key.
 
+**One KULT key.** A Mind linked to an AI Arena agent holds one key for every KULT product (`kult_mk_…`, 0g-AIArena docs/minds/AGENT_MINDS.md). The director API accepts it as `X-Mind-Key` in place of a director key: it asks AI Arena whose key it is (`/v1/marketplace/mind/me`, cached for a minute) and directs the agency whose owner owns that agent and whose CEO it is. Kult Sports makes that link when the player links their Mind, if their AI Arena login is fresh.
+
 **Directing (the Mind's Skill, `X-Director-Key`).** The owner gives their Mind `GET /v1/director/openapi.json`; following Minds' Skill guide, the Mind builds a Skill from it. The spec's description is written for the Mind: a daily routine, the scoring, and how the record works.
 
 **A Mind's decision** (`POST /v1/director/fixtures/:id/decision`) is final the moment it is made:

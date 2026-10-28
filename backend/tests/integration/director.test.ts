@@ -6,6 +6,7 @@ import { buildApp } from '../../src/app';
 import { AppError, unauthorized, upstreamUnavailable } from '../../src/api/errors';
 import type { ArenaGateway, ArenaIdentity } from '../../src/clients/ai-arena';
 import type { FixtureContext, FootballIntel, MatchOutcome, MatchRecord, RecordProfile, RecordSubmission, Specialty } from '../../src/clients/ai-infra';
+import type { ArenaMind, ArenaMindKeys } from '../../src/clients/arena-minds';
 import type { MindsGateway, MindsIdentity } from '../../src/clients/minds';
 import { DirectorService } from '../../src/game/director';
 import { MindsStore } from '../../src/game/minds-store';
@@ -65,6 +66,13 @@ class StubRecord implements MatchRecord {
   }
 }
 
+class StubArenaMinds implements ArenaMindKeys {
+  keys = new Map<string, ArenaMind>();
+  async resolve(key: string) {
+    return this.keys.get(key);
+  }
+}
+
 class StubMinds implements MindsGateway {
   accounts = new Map<string, MindsIdentity>();
   async identify(token: string) {
@@ -84,11 +92,13 @@ describe.skipIf(!url)('Mind directors (end to end, Postgres)', () => {
   const intel = new StubIntel();
   const record = new StubRecord();
   const minds = new StubMinds();
+  const arenaMinds = new StubArenaMinds();
   const tokens: Record<string, string> = {};
   const keys: Record<string, string> = {};
 
-  const call = async (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, who?: { user?: string; key?: string }, body?: unknown) => {
+  const call = async (method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, who?: { user?: string; key?: string; mindKey?: string }, body?: unknown) => {
     const headers: Record<string, string> = {};
+    if (who?.mindKey) headers['x-mind-key'] = who.mindKey;
     if (who?.user) headers.authorization = `Bearer ${tokens[who.user]}`;
     if (who?.key) headers['x-director-key'] = who.key;
     const res = await app.inject({ method, url: path, headers, ...(body !== undefined && { payload: body as object }) });
@@ -114,7 +124,7 @@ describe.skipIf(!url)('Mind directors (end to end, Postgres)', () => {
     const log = pino({ level: 'silent' });
     const cfg = { sessionSecret: SECRET, sessionTtlMinutes: 30 * 24 * 60, lockMinutesBeforeKickoff: 5, maxAnalysesPerFixture: 3 };
     game = new GameService(store, arena, intel, cfg, log, () => clock);
-    director = new DirectorService(game, store, new MindsStore(pool), minds, intel, record, { lockMinutesBeforeKickoff: 5 }, log, () => clock);
+    director = new DirectorService(game, store, new MindsStore(pool), minds, intel, record, { lockMinutesBeforeKickoff: 5 }, log, () => clock, arenaMinds);
     app = await buildApp({
       config: { logLevel: 'silent', bodyLimitBytes: 65536, requestTimeoutMs: 30000, rateLimitPerMinute: 1000, corsOrigins: [], sessionSecret: SECRET },
       game,
@@ -252,7 +262,19 @@ describe.skipIf(!url)('Mind directors (end to end, Postgres)', () => {
     expect((await call('GET', '/v1/director/agency', { key: keys.alice })).status).toBe(401);
   });
 
-  it('8. publishes the spec the Mind builds its Skill from', async () => {
+  it('8. a Mind linked to the CEO agent in AI Arena directs with its one KULT key', async () => {
+    const kultKey = 'kult_mk_' + 'k'.repeat(43);
+    const notCeo = 'kult_mk_' + 'n'.repeat(43);
+    arenaMinds.keys.set(kultKey, { agentId: 'agent-owl', ownerUserId: 'user-bob', mindId: 'owl-mind', mindName: 'Owl Mind' });
+    arenaMinds.keys.set(notCeo, { agentId: 'agent-other', ownerUserId: 'user-bob', mindId: 'x', mindName: 'X' });
+    const agency = await call('GET', '/v1/director/agency', { mindKey: kultKey });
+    expect(agency.status).toBe(200);
+    expect(agency.body.name).toBe('Owl Analytics');
+    expect((await call('GET', '/v1/director/agency', { mindKey: notCeo })).status).toBe(401);
+    expect((await call('GET', '/v1/director/agency', { mindKey: 'kult_mk_' + 'u'.repeat(43) })).status).toBe(401);
+  });
+
+  it('9. publishes the spec the Mind builds its Skill from', async () => {
     const spec = (await call('GET', '/v1/director/openapi.json')).body;
     expect(spec.servers[0].url).toBe('https://api.example.test');
     expect(Object.keys(spec.paths)).toContain('/v1/director/fixtures/{id}/decision');

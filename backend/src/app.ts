@@ -7,6 +7,7 @@ import { errorHandler } from './api/errors';
 import { registerRoutes } from './api/routes';
 import { registerDirectorRoutes } from './api/director-routes';
 import { hashDirectorKey, looksLikeDirectorKey, type DirectorService } from './game/director';
+import { hashKey, looksLikeArenaMindKey } from './clients/arena-minds';
 import type { GameService } from './game/service';
 import { CORRELATION_HEADER, genCorrelationId, loggerOptions } from './telemetry/logger';
 
@@ -65,7 +66,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // A Mind's Skill calls from Hello Minds' shared servers: one bucket per director key, not per IP.
     keyGenerator: (req) => {
       const key = req.headers['x-director-key'];
-      return looksLikeDirectorKey(key) ? `dk:${hashDirectorKey(key)}` : req.ip;
+      const mindKey = req.headers['x-mind-key'];
+      if (looksLikeDirectorKey(key)) return `dk:${hashDirectorKey(key)}`;
+      return looksLikeArenaMindKey(mindKey) ? `mk:${hashKey(mindKey)}` : req.ip;
     },
   });
 

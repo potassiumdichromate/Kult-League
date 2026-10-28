@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { verifySession } from '../auth/session';
 import type { DirectorRow } from '../game/minds-store';
+import { looksLikeArenaMindKey } from '../clients/arena-minds';
 import { DirectorService, looksLikeDirectorKey } from '../game/director';
 import { directorOpenApi } from './director-openapi';
 import { parseOrThrow, unauthorized } from './errors';
@@ -77,9 +78,11 @@ export function registerDirectorRoutes(
 
   app.register(async (scope) => {
     scope.addHook('preHandler', async (req) => {
+      // A director key from this game, or the Mind's one KULT key from AI Arena.
       const key = req.headers['x-director-key'];
-      const d = looksLikeDirectorKey(key) ? await director.resolve(key) : undefined;
-      if (!d) throw unauthorized('missing, unknown or revoked X-Director-Key');
+      const mindKey = req.headers['x-mind-key'];
+      const d = looksLikeDirectorKey(key) ? await director.resolve(key) : looksLikeArenaMindKey(mindKey) ? await director.resolveArenaMind(mindKey) : undefined;
+      if (!d) throw unauthorized('missing, unknown or revoked X-Director-Key (or X-Mind-Key)');
       req.director = d;
     });
     const d = (req: FastifyRequest) => req.director!;

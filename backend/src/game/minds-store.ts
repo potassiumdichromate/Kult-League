@@ -131,6 +131,12 @@ export class MindsStore {
     return (rowCount ?? 0) > 0;
   }
 
+  /** The agency this owner runs with this agent as CEO, if any. */
+  async agencyRunBy(ownerUserId: string, agentId: string): Promise<string | undefined> {
+    const { rows } = await this.pool.query<{ id: string }>(`SELECT id FROM pixel_agency.agencies WHERE owner_user_id = $1 AND ceo_agent_id = $2`, [ownerUserId, agentId]);
+    return rows[0]?.id;
+  }
+
   /** Resolves an active key; also records when it was last used. */
   async director(keyHash: string): Promise<DirectorRow | undefined> {
     const { rows } = await this.pool.query<DirectorRow>(

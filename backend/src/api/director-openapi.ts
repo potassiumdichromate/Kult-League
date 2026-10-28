@@ -53,9 +53,10 @@ export function directorOpenApi(baseUrl: string) {
     components: {
       securitySchemes: {
         DirectorKey: { type: 'apiKey', in: 'header', name: 'X-Director-Key', description: 'Director key from your owner (starts with pa_mk_). Keep it secret.' },
+        MindKey: { type: 'apiKey', in: 'header', name: 'X-Mind-Key', description: 'Or your one KULT key (starts with kult_mk_) if your owner linked you to their AI Arena agent: it directs the agency where that agent is CEO.' },
       },
     },
-    security: [{ DirectorKey: [] }],
+    security: [{ DirectorKey: [] }, { MindKey: [] }],
     paths: {
       '/v1/director/record': { get: { operationId: 'getRecord', summary: 'Your career record: per market, vs the 0G baseline, calibration, lessons', responses: { '200': ok('Your record on ai-infrastructure and this agency\'s standing.'), ...errors } } },
       '/v1/director/agency': { get: { operationId: 'getAgency', summary: 'Credits, level, desks, staff, payroll and standings', responses: { '200': ok('The agency.'), ...errors } } },

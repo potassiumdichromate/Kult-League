@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { AppConfig } from './config/env';
 import { AiArenaClient } from './clients/ai-arena';
 import { AiInfraClient } from './clients/ai-infra';
+import { AiArenaMindKeys } from './clients/arena-minds';
 import { MindsClient } from './clients/minds';
 import { DirectorService } from './game/director';
 import { MindsStore } from './game/minds-store';
@@ -19,6 +20,6 @@ export function buildServices(pool: Pool, cfg: AppConfig, log: Logger): { game: 
     { sessionSecret: cfg.sessionSecret, sessionTtlMinutes: cfg.sessionTtlMinutes, lockMinutesBeforeKickoff: cfg.lockMinutesBeforeKickoff, maxAnalysesPerFixture: cfg.maxAnalysesPerFixture },
     log,
   );
-  const director = new DirectorService(game, store, new MindsStore(pool), new MindsClient(cfg.mindsApiUrl), infra, infra, { lockMinutesBeforeKickoff: cfg.lockMinutesBeforeKickoff }, log);
+  const director = new DirectorService(game, store, new MindsStore(pool), new MindsClient(cfg.mindsApiUrl), infra, infra, { lockMinutesBeforeKickoff: cfg.lockMinutesBeforeKickoff }, log, undefined, new AiArenaMindKeys(cfg.aiArenaApiUrl));
   return { game, director };
 }

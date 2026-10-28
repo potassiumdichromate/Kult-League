@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Logger } from 'pino';
 import { AppError, conflict, notFound, tooMany } from '../api/errors';
 import type { FootballIntel, MatchRecord, RecordSubmission } from '../clients/ai-infra';
+import { ArenaMindKeys, hashKey } from '../clients/arena-minds';
 import type { MindsGateway, MindSummary } from '../clients/minds';
 import type { MindsStore, DirectorRow } from './minds-store';
 import { Picks, picksProblems } from './picks';
@@ -86,6 +87,8 @@ export class DirectorService {
     private readonly cfg: DirectorConfig,
     private readonly log: Logger,
     private readonly now: () => Date = () => new Date(),
+    /** Resolves AI Arena Mind keys (`kult_mk_…`); without it only director keys work. */
+    private readonly arenaMinds?: ArenaMindKeys,
   ) {}
 
   private async agencyIdOf(userId: string): Promise<string> {
@@ -156,6 +159,19 @@ export class DirectorService {
   /** The agency behind a director key, or undefined for an unknown or revoked key. */
   resolve(key: string): Promise<DirectorRow | undefined> {
     return this.store.director(hashDirectorKey(key));
+  }
+
+  /**
+   * The agency behind an AI Arena Mind key: the Mind runs an agent, and it
+   * directs the agency whose owner owns that agent and whose CEO it is. So a
+   * Mind linked once, to the agent, plays here too, with no second key.
+   */
+  async resolveArenaMind(key: string): Promise<DirectorRow | undefined> {
+    const m = await this.arenaMinds?.resolve(key);
+    if (!m) return undefined;
+    const agencyId = await this.store.agencyRunBy(m.ownerUserId, m.agentId);
+    if (!agencyId) return undefined;
+    return { keyId: `arena:${hashKey(key).slice(0, 16)}`, agencyId, ownerUserId: m.ownerUserId, mindId: m.mindId, mindName: m.mindName };
   }
 
   private requireMind(d: DirectorRow): string {
