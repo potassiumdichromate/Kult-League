@@ -33,7 +33,7 @@ const envSchema = z.object({
   /** Hello Minds Builder API, used to prove a Minds Connect sign-in when an owner links their Mind. */
   MINDS_API_URL: z.string().url().default('https://api.build.hellominds.ai'),
   /** This API's public origin, written into the director OpenAPI spec a Mind builds its Skill from. */
-  PUBLIC_API_URL: z.string().url().default('https://pixel-agency-api.onrender.com'),
+  PUBLIC_API_URL: z.string().url().default('https://pixel-agency-api-jzej.onrender.com'),
 
   /** Origins allowed to call the API from a browser (the game's host), comma separated. */
   CORS_ORIGINS: z.string().default(''),
