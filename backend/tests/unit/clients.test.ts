@@ -51,3 +51,12 @@ describe('AiInfraClient', () => {
     await expect(answer(401, { message: 'bad signature' }).context(1)).rejects.toMatchObject({ statusCode: 503 });
   });
 });
+
+describe('unreachableReason', () => {
+  it('names the host and the network failure, for the logs', async () => {
+    const { unreachableReason } = await import('../../src/clients/ai-infra');
+    const dns = Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } });
+    expect(unreachableReason(dns, 'http://ai-infrastructure:10000', false, 1000)).toEqual({ host: 'ai-infrastructure:10000', reason: 'ENOTFOUND' });
+    expect(unreachableReason(new Error('aborted'), 'http://ai:10000', true, 55000)).toEqual({ host: 'ai:10000', reason: 'no response within 55000 ms' });
+  });
+});

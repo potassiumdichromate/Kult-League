@@ -139,8 +139,11 @@ export class AiInfraClient implements FootballIntel, MatchRecord {
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.opts.url}${pathWithQuery}`, { method, headers, signal: controller.signal, ...(body !== undefined && { body: payload }) });
-    } catch {
-      throw upstreamUnavailable('match intelligence is unreachable');
+    } catch (err) {
+      // The reason goes to the logs only; players see the generic message.
+      throw Object.assign(upstreamUnavailable('match intelligence is unreachable'), {
+        upstream: unreachableReason(err, this.opts.url, controller.signal.aborted, this.opts.timeoutMs ?? 60_000),
+      });
     } finally {
       clearTimeout(timer);
     }
@@ -185,4 +188,17 @@ export class AiInfraClient implements FootballIntel, MatchRecord {
   research(fixtureId: number, specialty: Specialty) {
     return this.request<ResearchBrief>('GET', `/v1/football/fixtures/${fixtureId}/research/${specialty}`);
   }
+}
+
+/** Why a request to ai-infrastructure got no response: timeout, unknown host, refused connection. */
+export function unreachableReason(err: unknown, baseUrl: string, aborted: boolean, timeoutMs: number): { host: string; reason: string } {
+  let host = baseUrl;
+  try {
+    host = new URL(baseUrl).host;
+  } catch {
+    // keep the raw value
+  }
+  if (aborted) return { host, reason: `no response within ${timeoutMs} ms` };
+  const cause = (err as { cause?: { code?: string; message?: string } } | undefined)?.cause;
+  return { host, reason: cause?.code ?? cause?.message ?? (err as Error | undefined)?.message ?? 'unknown' };
 }
