@@ -94,6 +94,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (o === '*') problems.push('CORS_ORIGINS must list origins explicitly, not *');
     else if (!/^https?:\/\/[^/]+$/.test(o)) problems.push('CORS_ORIGINS entries must be origins like https://game.example.com (no path)');
   }
+  // A bare host:port parses as a URL with an unknown scheme and every call fails.
+  if (!/^https?:\/\//.test(e.AI_INFRA_URL)) problems.push('AI_INFRA_URL must start with http:// or https:// (e.g. http://ai-infrastructure:10000)');
   if (e.NODE_ENV === 'production') {
     if (!e.AI_ARENA_API_URL.startsWith('https://')) problems.push('AI_ARENA_API_URL must use https in production');
     if (!e.MINDS_API_URL.startsWith('https://')) problems.push('MINDS_API_URL must use https in production');

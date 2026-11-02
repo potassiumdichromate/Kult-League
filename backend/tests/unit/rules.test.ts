@@ -64,6 +64,7 @@ describe('config', () => {
     expect(() => loadConfig({ ...base, SESSION_SECRET: '' })).toThrow(/SESSION_SECRET/);
     expect(() => loadConfig({ ...base, CORS_ORIGINS: '*' })).toThrow(/not \*/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', CORS_ORIGINS: 'http://game.example.com' })).toThrow(/https/);
+    expect(() => loadConfig({ ...base, AI_INFRA_URL: 'ai-infrastructure:10000' })).toThrow(/AI_INFRA_URL must start with http/);
     expect(loadConfig({ ...base, CORS_ORIGINS: 'https://game.example.com, http://localhost:5173' }).corsOrigins).toEqual(['https://game.example.com', 'http://localhost:5173']);
   });
 });
