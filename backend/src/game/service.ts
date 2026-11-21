@@ -248,6 +248,25 @@ export class GameService {
     };
   }
 
+  /**
+   * A locked or settled prediction by its id, for a link the player shares.
+   * Drafts stay private. Only the match, the picks, the result and the
+   * agency's public name go out: no owner, credits or Mind record.
+   */
+  async publicPrediction(id: string) {
+    const p = await this.store.predictionById(id);
+    if (!p || p.status === 'DRAFT') throw notFound('no such prediction');
+    const agency = await this.store.agencyById(p.agencyId);
+    const v = this.predictionView(p);
+    return {
+      prediction: {
+        id: v.id, match: v.match, leagueName: v.leagueName, kickoffAt: v.kickoffAt, week: v.week, status: v.status,
+        picks: v.picks, lockedAt: v.lockedAt, settledAt: v.settledAt, points: v.points, exactHits: v.exactHits, breakdown: v.breakdown, decidedBy: v.decidedBy,
+      },
+      agency: agency ? { name: agency.name, ceoName: agency.ceoName } : null,
+    };
+  }
+
   async predictions(userId: string) {
     const agency = await this.agencyOf(userId);
     return { predictions: (await this.store.recentPredictions(agency.id, 50)).map((p) => this.predictionView(p)) };

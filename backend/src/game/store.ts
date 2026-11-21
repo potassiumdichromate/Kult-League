@@ -292,6 +292,16 @@ export class GameStore {
     return rows;
   }
 
+  async predictionById(id: string): Promise<PredictionRow | undefined> {
+    const { rows } = await this.pool.query<PredictionRow>(`SELECT ${predictionCols} FROM pixel_agency.predictions WHERE id = $1`, [id]);
+    return rows[0];
+  }
+
+  async agencyById(id: string): Promise<AgencyRow | undefined> {
+    const { rows } = await this.pool.query<AgencyRow>(`SELECT ${agencyCols} FROM pixel_agency.agencies WHERE id = $1`, [id]);
+    return rows[0];
+  }
+
   async recentPredictions(agencyId: string, limit: number): Promise<PredictionRow[]> {
     const { rows } = await this.pool.query<PredictionRow>(`SELECT ${predictionCols} FROM pixel_agency.predictions WHERE agency_id = $1 ORDER BY kickoff_at DESC LIMIT $2`, [agencyId, limit]);
     return rows;

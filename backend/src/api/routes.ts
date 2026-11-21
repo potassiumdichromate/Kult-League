@@ -32,6 +32,7 @@ const boardQuery = z
   })
   .strict();
 const boardParams = z.object({ kind: z.enum(['weekly', 'all-time']) });
+const predictionParams = z.object({ id: z.string().uuid() });
 
 export function registerRoutes(app: FastifyInstance, game: GameService, sessionSecret: string, now: () => number = Date.now): void {
   const bearer = (req: FastifyRequest): string | undefined => {
@@ -82,6 +83,11 @@ export function registerRoutes(app: FastifyInstance, game: GameService, sessionS
   );
   app.post('/v1/fixtures/:id/prediction/lock', { preHandler: auth }, async (req) => game.lock(user(req), parseOrThrow(fixtureParams, req.params).id));
   app.get('/v1/predictions', { preHandler: auth }, async (req) => game.predictions(user(req)));
+
+  // Public: a locked prediction behind a link the player shares (no sign-in).
+  app.get('/v1/public/predictions/:id', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req) =>
+    game.publicPrediction(parseOrThrow(predictionParams, req.params).id),
+  );
 
   // Public: anyone can view the boards; a signed-in player also gets their own standing.
   app.get('/v1/leaderboards/:kind', async (req) => {

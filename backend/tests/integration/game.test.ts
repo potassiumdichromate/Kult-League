@@ -171,8 +171,19 @@ describe.skipIf(!url)('Pixel Agency (end to end, Postgres)', () => {
     const ok = await call('PUT', `/v1/fixtures/${FIXTURE_ID}/prediction`, 'alice', { outcome: 'HOME', score: { home: 2, away: 1 }, corners: 10, cards: 4, scorerId: '1001' });
     expect(ok.status).toBe(200);
     expect(ok.body.prediction).toMatchObject({ edited: true, picks: { scorerName: 'Bukayo Test' } });
+    // A draft is never public.
+    expect((await call('GET', `/v1/public/predictions/${ok.body.prediction.id}`)).status).toBe(404);
 
-    expect((await call('POST', `/v1/fixtures/${FIXTURE_ID}/prediction/lock`, 'alice')).body.prediction.status).toBe('LOCKED');
+    const locked = await call('POST', `/v1/fixtures/${FIXTURE_ID}/prediction/lock`, 'alice');
+    expect(locked.body.prediction.status).toBe('LOCKED');
+    // Once locked, the shared link works without signing in, and shows no account details.
+    const shared = await call('GET', `/v1/public/predictions/${locked.body.prediction.id}`);
+    expect(shared.status).toBe(200);
+    expect(shared.body.prediction).toMatchObject({ status: 'LOCKED', picks: { outcome: 'HOME', scorerName: 'Bukayo Test' } });
+    expect(shared.body.agency.name).toBeTruthy();
+    expect(JSON.stringify(shared.body)).not.toMatch(/ownerUserId|credits|agencyId|mindDecision/);
+    expect((await call('GET', '/v1/public/predictions/not-a-uuid')).status).toBe(400);
+    expect((await call('GET', '/v1/public/predictions/00000000-0000-4000-8000-000000000000')).status).toBe(404);
     expect((await call('PUT', `/v1/fixtures/${FIXTURE_ID}/prediction`, 'alice', { corners: 9 })).status).toBe(409);
     expect((await call('POST', `/v1/fixtures/${FIXTURE_ID}/analysis`, 'alice')).status).toBe(409);
     await expect(pool.query(`UPDATE pixel_agency.predictions SET picks = '{}' WHERE status = 'LOCKED'`)).rejects.toThrow(/locked/);
